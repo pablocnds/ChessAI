@@ -24,19 +24,23 @@ while action != "exit":
     
     if action == "exit":
         continue
-    if len(action) != 8:
+    
+    if len(action) == 8:
+        c1 = mov_to_coord(action[:2])
+        c2 = mov_to_coord(action[6:])
+    elif len(action) == 5:
+        c1 = mov_to_coord(action[:2])
+        c2 = mov_to_coord(action[3:])
+    else:
         print(len(action))
         print("Wrong input. Use the correct format or \"exit\":\n\tExample: \"2C -> 3C\"\n")
         continue
-    
-    c1 = mov_to_coord(action[:2])
-    c2 = mov_to_coord(action[6:])
+            
     if c1 is None or c2 is None:
-        print("Wrong input. Use the correct format or \"exit\":\n\tExample: \"2C -> 3C\"\n")
+        print("Wrong input. Use the correct format or \"exit\":\n\tExample: \"C2 -> C3\"\n")
         continue
 
     if game.attempt_movement(c1,c2) is False:
-        print("Invalid move!\n")
         continue
 
     print(game.to_string() + "\n")

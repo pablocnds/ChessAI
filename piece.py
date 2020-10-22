@@ -6,6 +6,22 @@ class Vec2:
         return (self.x,self.y)
     def copy(self):
         return Vec2(self.x,self.y)
+    def __add__(self, o):
+        return Vec2(self.x + o.x, self.y + o.y)
+    def __sub__(self, o):
+        return Vec2(self.x - o.x, self.y - o.y)
+    def __mul__(self, o):
+        if type(o) is int:
+            return Vec2(self.x * o, self.y * o)
+        return Vec2(self.x * o.x, self.y - o.y)
+    def __div__(self, o):
+        return Vec2(self.x / o.x, self.y / o.y)
+    def __eq__(self, o):
+        return self.x == o.x and self.y == o.y
+    def __abs__(self, o):
+        return Vec2(abs(self.x), abs(self.y))
+    def __str__(self):
+        return "(" + str(self.x) + "," + str(self.y) + ")"
     
 class Piece:
     """

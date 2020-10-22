@@ -16,7 +16,7 @@ class Board:
     There is a redundancy in the internal data representation as there are two different data structures holding references to the pieces.
     This data redundancy is done for optimization purposes due to the way methods can perform in the implementation.
     """
-    def __init__(self,width=8,height=8,pieces=None):
+    def __init__(self,width=8,height=8,pieces=None,silent=False):
         self.size = piece.Vec2(width, height)
 
         # Table object with the references to the pieces
@@ -28,9 +28,11 @@ class Board:
             self.redo_table()
         else: self.pieces = np.array(pieces)
 
-        # Turn 'W' for whites, 'B' for blacks
-        self.playing = 'W'
+        self.silent = silent
+        self.playing = 'W'      # Playing 'W' for whites, 'B' for blacks
         self.turn = 0
+        self.is_check = False
+        self.forward = piece.Vec2(0,1)
     
     @staticmethod
     def starting_pieces():
@@ -91,9 +93,14 @@ class Board:
         if not self.is_legal_movement(from_coord, to_coord):
             return False
 
+        #TODO piece capture
+
         self.move_piece(from_coord,to_coord)
 
+        #TODO is check / checkmate
+
         self.turn += 1
+        self.forward.y *= -1
         if self.playing == 'W': self.playing = 'B'
         else: self.playing = 'W'
 
@@ -103,10 +110,21 @@ class Board:
     def is_legal_movement(self, from_coord, to_coord):
         """Checks if the coordinate to start move has a valid piece on turn"""
         if not self.is_in_boundaries(from_coord):
+            if not self.silent: print("Invalid move: This move is outside the boundaries!")
             return False
         if not self.is_piece_on_turn(from_coord):
+            if not self.silent: print("Invalid move: Wrong turn!")
             return False
-        #TODO rules
+        if from_coord == to_coord:
+            if not self.silent: print("Invalid move: Can't move to the same square!")
+            return False
+        if not self.is_valid_piece_movement(from_coord, to_coord):
+            if not self.silent: print("Ilegal move: This piece can't do that!")
+            return False
+        # TODO
+        #if not self.check_misc_rules(from_coord, to_coord):
+            #if not self.silent: print("Ilegal move: This move can't be done.")
+            #return False
 
         return True
 
@@ -122,6 +140,96 @@ class Board:
             return True
         
         return False
+    
+
+    def is_valid_piece_movement(self, from_coord, to_coord):
+        """Returns True if the movement can be done with the specific piece and is in boundaries."""
+        if not self.is_in_boundaries(to_coord):
+            return False
+        
+        p = self.get_piece_at(from_coord)
+        if self.get_piece_at(to_coord) is not None:
+            if self.get_piece_at(to_coord).team == p.team:  # Moving to a same team piece
+                # TODO check if its castling
+                return False
+
+        movement = to_coord - from_coord
+        piece_type = p.piece_type
+        
+        # BISHOP
+        if piece_type == 'B':
+            return (abs(movement.x) == abs(movement.y) and 
+                self.check_in_path(from_coord, piece.Vec2(movement.x/abs(movement.x), movement.y/abs(movement.x)), abs(movement.x)))
+        
+        # KNIGHT
+        if piece_type == 'H':
+            absolute = piece.Vec2(abs(movement.x), abs(movement.y))
+            return ((absolute.x == 1 or absolute.x == 2)
+                and (absolute.y == 1 or absolute.y == 2)
+                and (absolute.x != absolute.y))
+        
+        # ROOK
+        if piece_type == 'T':
+            absolute = piece.Vec2(abs(movement.x), abs(movement.y))
+            leng = movement.x + movement.y
+            unit = piece.Vec2(movement.x/movement.x,0) if movement.x != 0 else piece.Vec2(0,movement.y/movement.y)
+            if ((absolute.x == 0 or absolute.y == 0)
+                and (absolute.x > 0 or absolute.y > 0)):
+                length = absolute.x + absolute.y
+                step = piece.Vec2(movement.x/length,movement.y/length)
+                return self.check_in_path(from_coord, step, length)
+        
+        # QUEEN
+        if piece_type == 'Q':
+            absolute = piece.Vec2(abs(movement.x), abs(movement.y))
+            if absolute.x == absolute.y:
+                return self.check_in_path(from_coord, piece.Vec2(movement.x/absolute.x, movement.y/absolute.x), absolute.x)
+            elif ((absolute.x == 0 or absolute.y == 0) and (absolute.x > 0 or absolute.y > 0)):
+                length = absolute.x + absolute.y
+                step = piece.Vec2(movement.x/length,movement.y/length)
+                return self.check_in_path(from_coord, step, length)
+
+        # KING
+        if piece_type == 'K':
+            absolute = piece.Vec2(abs(movement.x), abs(movement.y))
+            return (absolute.x + absolute.y == 1) or (absolute.x == 1 and absolute.y == 1)
+            #TODO Check castling
+        
+        # PAWN
+        if piece_type == 'P':
+            if movement == self.forward:    # 1 forward move
+                return self.get_piece_at(to_coord) is None
+
+            elif movement.y == self.forward.y and abs(movement.x) == 1: # Diagonal capture movement
+                return self.get_piece_at(to_coord) is not None
+
+            elif movement == (self.forward * 2):    # 2 forward initial move
+                return (((p.is_whites() and from_coord.y == 1)
+                    or (p.is_blacks() and from_coord.y == self.size.y - 2))
+                    and self.get_piece_at(to_coord) is None)
+            
+            #TODO check "en passant" case
+
+            else: return False
+        
+        return False
+    
+
+    def check_in_path(self, start, vec_step, num_steps):
+        """Given a start, a step vector and a number of steps, returns True if there is no piece in the calculated path"""
+        print("Trying " + str(start) + " using " + str(vec_step) + " " + str(num_steps) + " times")
+        current = start
+        for i in range(1, num_steps):
+            current += vec_step
+            if self.get_piece_at(current) is not None:
+                return False
+        return True
+
+    
+    def get_piece_at(self, coord):
+        """*coord*: can be a tuple or a Vec2"""
+        if type(coord) is tuple: return self.table[coord]
+        return self.table[coord.tup()]
 
 
     def move_piece(self, from_coord, to_coord):
