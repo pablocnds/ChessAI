@@ -33,6 +33,11 @@ class Board:
         self.turn = 0
         self.is_check = False
         self.forward = piece.Vec2(0,1)
+
+        self.piece_ind = {   # Indices of the pieces in the list
+            'wK':(0,),  'wQ':(1,),  'wB':(2, 3),  'wH':(4, 5),  'wT':(6, 7),  'wP':(8, 9, 10,11,12,13,14,15),
+            'bK':(16,), 'bQ':(17,), 'bB':(18,19), 'bH':(20,21), 'bT':(22,23), 'bP':(24,25,26,27,28,29,30,31)
+        }
     
     @staticmethod
     def starting_pieces():
@@ -66,6 +71,9 @@ class Board:
 
         for i in range(8): pcs.append(piece.Piece(i,6,'P',False)) # Pawns
 
+        # [WHITES] 0:K, 1:Q, 2-3:Bs, 4-5:Hs, 6-7:Ts, 8-15:Ps
+        # [BLACKS] 16:K, 17:Q, 18-19:Bs, 20-21:Hs, 22-23:Ts, 24-31:Ps
+
         return pcs
     
 
@@ -80,6 +88,8 @@ class Board:
 
     def attempt_movement(self,from_coord,to_coord):
         """
+        This is the intended method to move a piece and check if it follows the rules.
+        
         Returns True if the movement has been performed. Otherwise return False and the movement attempted is ilegal.
         If the movement is performed, the turn changes.
 
@@ -93,16 +103,51 @@ class Board:
         if not self.is_legal_movement(from_coord, to_coord):
             return False
 
-        #TODO piece capture
+        # Check if it's a capture and perform it
+        target = self.get_piece_at(to_coord)
+        if target is not None: target.kill()
 
         self.move_piece(from_coord,to_coord)
 
         #TODO is check / checkmate
+        king = self.get_specific_pieces('K', 'W' if self.playing == 'B' else 'B')[0]
+        if self.is_under_attack(king.pos, self.playing):
+            print("yes")
+            king_locked = True
+            king_steps = ((0,1),(1,0),(0,-1),(-1,0),(1,1),(-1,-1),(1,-1),(-1,1))
+            for step in king_steps:
+                coord = piece.Vec2(king.pos.x + step[0], king.pos.y + step[1])
+                if not self.is_in_boundaries(coord):
+                    # King can't move here
+                    continue
+                tg_piece = self.get_piece_at(coord)
+                if tg_piece is not None and self.is_on_team(tg_piece, 'W' if king.is_whites() else 'B'):
+                    # Can't move to a square occupied by the same team
+                    continue
+                if self.is_under_attack(coord, self.playing):
+                    # Can't move to a square under attack
+                    continue
+                
+                # No restrictions found, king can move
+                king_locked = False
+                break
+
+            # TODO check other moves that could save the king (e.g. castling, piece intercepting attack, another check)
+            #if king_locked and len(attackers) == 1: for attacker: can_be_intercepted(king, attacker)
+
+            if king_locked:
+                if not self.silent: print("Checkmate!")
+                exit()
+                
+
+            if not self.silent: print("Check!")
+        
+        #TODO is tables
+        #TODO king captured??
 
         self.turn += 1
         self.forward.y *= -1
-        if self.playing == 'W': self.playing = 'B'
-        else: self.playing = 'W'
+        self.playing = 'W' if self.playing == 'B' else 'B'
 
         return True
 
@@ -121,7 +166,7 @@ class Board:
         if not self.is_valid_piece_movement(from_coord, to_coord):
             if not self.silent: print("Ilegal move: This piece can't do that!")
             return False
-        # TODO
+        # TODO check the king is safe
         #if not self.check_misc_rules(from_coord, to_coord):
             #if not self.silent: print("Ilegal move: This move can't be done.")
             #return False
@@ -192,8 +237,22 @@ class Board:
         # KING
         if piece_type == 'K':
             absolute = piece.Vec2(abs(movement.x), abs(movement.y))
+            
+            # Check castling
+            if p.first_move and absolute.x == 2:
+                cr_x = 0 if to_coord.x == 2 else 7
+                castling_rook = self.get_piece_at((cr_x,to_coord.y))
+                if (castling_rook is not None) and castling_rook.first_move:
+                    unit = piece.Vec2(int(movement.x/absolute.x), 0)
+                    lng = abs(castling_rook.pos.x - from_coord.x)
+                    if self.check_in_path(from_coord, unit, lng):
+                        atk = 'B' if p.is_whites() else 'W'
+                        if not (self.is_under_attack(from_coord, t) or self.is_under_attack(to_coord, t)):
+                            # TODO: the movement should be outside this "checking" method
+                            self.move_piece(piece.Vec2(cr_x, to_coord.y), piece.Vec2((3 if cr_x == 0 else 5),to_coord.y))
+                            return True
+
             return (absolute.x + absolute.y == 1) or (absolute.x == 1 and absolute.y == 1)
-            #TODO Check castling
         
         # PAWN
         if piece_type == 'P':
@@ -204,11 +263,12 @@ class Board:
                 return self.get_piece_at(to_coord) is not None
 
             elif movement == (self.forward * 2):    # 2 forward initial move
-                return (((p.is_whites() and from_coord.y == 1)
+                return (((p.is_whites() and from_coord.y == 1)  # TODO optimize with the new variable
                     or (p.is_blacks() and from_coord.y == self.size.y - 2))
-                    and self.get_piece_at(to_coord) is None)
+                    and self.get_piece_at(to_coord) is None) # TODO check if there is piece on 2-forw path
             
             #TODO check "en passant" case
+            #TODO check pawn promotion
 
             else: return False
         
@@ -226,10 +286,91 @@ class Board:
         return True
 
     
+    def is_under_attack(self, coord, attackers):
+        """Checks if the given coordinate is currently under attack from the attacking team"""
+        # Performance oriented implementation (checks surroundings instead of checking all pieces)
+        
+        # Check the diagonals and lines of the coordinate
+        diag_steps = ((1,1),(1,-1),(-1,1),(-1,-1))
+        stra_steps = ((0,1),(1,0),(0,-1),(-1,0))
+
+        # Check for diagonal attacks (queen, bishop, pawn* and king*)
+        for step in diag_steps:
+            found,dist = self.first_in_path(coord, piece.Vec2(step[0], step[1]))
+            print(found)
+
+            if found is not None:
+                # Check team
+                if (found.is_whites() and attackers == 'W') or (not found.is_whites() and attackers == 'B'):
+                    # Check type
+                    if found.piece_type == 'Q' or found.piece_type == 'B':
+                        return True
+                    elif (found.piece_type == 'P' and dist == 1 
+                        and ((step[1] == 1 and found.is_blacks()) or (step[1] == -1 and found.is_whites()))):
+                        return True
+                    elif found.piece_type == 'K' and dist == 1:
+                        return True
+
+        
+        # Check for vertical/horizontal attacks (queen, rook and king*)
+        for step in stra_steps:
+            found,dist = self.first_in_path(coord, piece.Vec2(step[0], step[1]))
+            print(found)
+
+            if found is not None:
+                # Check team
+                if (found.is_whites() and attackers == 'W') or (not found.is_whites() and attackers == 'B'):
+                    # Check type
+                    if found.piece_type == 'T' or found.piece_type == 'Q':
+                        return True
+                    elif found.piece_type == 'K' and dist == 1:
+                        return True
+
+
+        # Check knights
+        knghs = self.get_specific_pieces('K', attackers)
+        for kngh in knghs:
+            rel = abs(kngh.pos - coord)
+            if (rel.x == 1 and rel.y == 2) or (rel.x == 2 and rel.y == 1):
+                return True
+
+
+        return False
+
+
+    def first_in_path(self, from_coord, step):
+        """Returns the first found piece in the path and its distance. Doesn't count the starting coord."""
+        piece = None
+        l = 1
+        checking_coord = from_coord + step
+        while self.is_in_boundaries(checking_coord):
+            piece = self.get_piece_at(checking_coord)
+            if piece is not None:
+                # Found a piece
+                break
+
+            checking_coord += step
+            l += 1
+
+        return piece, l
+
+    
     def get_piece_at(self, coord):
         """*coord*: can be a tuple or a Vec2"""
         if type(coord) is tuple: return self.table[coord]
         return self.table[coord.tup()]
+
+
+    def get_specific_pieces(self, piece_type, piece_team):
+        """Returns a tuple with the references to the requested pieces"""
+        inds = self.piece_ind[piece_team.lower() + piece_type]
+        return tuple(self.pieces[ind] for ind in inds)
+    
+    
+    def is_on_team(self, piece, team):
+        """Returns True if the team of the piece is the same as the given: {'B','W'}"""
+        t = 'W' if piece.is_whites() else 'B'
+        return team == t
 
 
     def move_piece(self, from_coord, to_coord):
@@ -257,7 +398,7 @@ class Board:
         elem = self.table[coord.tup()]
         self.table[coord.tup()] = None
         elem.kill()
-
+    
 
     def to_string(self):
         """
@@ -283,4 +424,12 @@ class Board:
             s += '\n'
         
         return ''.join(s) + sd + "]"
+    
+    
+    def get_table(self):
+        return self.table
+    
+    
+    def get_pieces(self):
+        return self.pieces
     

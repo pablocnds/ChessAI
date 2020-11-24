@@ -1,4 +1,5 @@
 import board
+import piece
 
 def mov_to_coord(movement):
     if type(movement) is not str or len(movement) != 2:
@@ -25,7 +26,20 @@ while action != "exit":
     if action == "exit":
         continue
     
-    if len(action) == 8:
+    # Forceful piece movement case (for debug)
+    if action[0] == 'f' and len(action) == 7:
+        c1 = mov_to_coord(action[2:4])
+        c2 = mov_to_coord(action[5:])
+        c1 = piece.Vec2(c1[0],c1[1])
+        c2 = piece.Vec2(c2[0],c2[1])
+
+        if c1 is None or c2 is None: continue
+
+        game.move_piece(c1,c2)
+        print(game.to_string() + "\n")
+        continue
+
+    elif len(action) == 8:
         c1 = mov_to_coord(action[:2])
         c2 = mov_to_coord(action[6:])
     elif len(action) == 5:

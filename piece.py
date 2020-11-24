@@ -18,8 +18,8 @@ class Vec2:
         return Vec2(self.x / o.x, self.y / o.y)
     def __eq__(self, o):
         return self.x == o.x and self.y == o.y
-    def __abs__(self, o):
-        return Vec2(abs(self.x), abs(self.y))
+    def __abs__(o):
+        return Vec2(abs(o.x), abs(o.y))
     def __str__(self):
         return "(" + str(self.x) + "," + str(self.y) + ")"
     
@@ -28,12 +28,13 @@ class Piece:
     Contains the basic information and methods to define a piece.
     The methods don't check if the actions are legal.
 
-    piece_type should be 'P'(pawn), 'R'(rook), 'H'(horse/knight), 'B'(Bishop), 'Q'(Queen) or 'K'(King)
+    piece_type should be 'P'(pawn), 'T'(tower/rook), 'H'(horse/knight), 'B'(Bishop), 'Q'(Queen) or 'K'(King)
     """
     def __init__(self, x, y, piece_type, is_whites):
         self.pos = Vec2(x,y)
         self.is_alive = True
         self.piece_type = piece_type
+        self.first_move = True  # For first pawn move and castling
 
         if is_whites: self.team = 0
         else: self.team = 1
@@ -45,6 +46,7 @@ class Piece:
         return self.team == 1
 
     def kill(self):
+        """Puts the piece state as dead and change its coordinates to (-1, -1)"""
         self.pos = Vec2(-1,-1)
         self.is_alive = False
     
@@ -58,4 +60,5 @@ class Piece:
 
         The coord must be a Vec2 element.
         """
+        if self.first_move: self.first_move = False
         self.pos = coord.copy()
