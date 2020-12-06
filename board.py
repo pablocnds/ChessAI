@@ -166,7 +166,7 @@ class Board:
         if not self.is_valid_piece_movement(from_coord, to_coord):
             if not self.silent: print("Ilegal move: This piece can't do that!")
             return False
-        # TODO check the king is safe
+        # TODO check if the king is safe
         #if not self.check_misc_rules(from_coord, to_coord):
             #if not self.silent: print("Ilegal move: This move can't be done.")
             #return False
@@ -247,8 +247,9 @@ class Board:
                     lng = abs(castling_rook.pos.x - from_coord.x)
                     if self.check_in_path(from_coord, unit, lng):
                         atk = 'B' if p.is_whites() else 'W'
-                        if not (self.is_under_attack(from_coord, t) or self.is_under_attack(to_coord, t)):
-                            # TODO: the movement should be outside this "checking" method
+                        # TODO: king under attack should not be necessary to check at this point
+                        if not (self.is_under_attack(from_coord, atk) or self.is_under_attack(to_coord, atk)):
+                            # TODO: this is a "checking" method and this move should be outside
                             self.move_piece(piece.Vec2(cr_x, to_coord.y), piece.Vec2((3 if cr_x == 0 else 5),to_coord.y))
                             return True
 
@@ -269,15 +270,19 @@ class Board:
             
             #TODO check "en passant" case
             #TODO check pawn promotion
+            
 
             else: return False
+
+            if (self.playing == 'W' and to_coord.y == 7) or (self.playing == 'B' and to_coord.y == 0):
+                #TODO pawn promotion
         
         return False
     
 
     def check_in_path(self, start, vec_step, num_steps):
         """Given a start, a step vector and a number of steps, returns True if there is no piece in the calculated path"""
-        print("Trying " + str(start) + " using " + str(vec_step) + " " + str(num_steps) + " times")
+        #print("Trying " + str(start) + " using " + str(vec_step) + " " + str(num_steps) + " times")
         current = start
         for i in range(1, num_steps):
             current += vec_step
@@ -297,7 +302,6 @@ class Board:
         # Check for diagonal attacks (queen, bishop, pawn* and king*)
         for step in diag_steps:
             found,dist = self.first_in_path(coord, piece.Vec2(step[0], step[1]))
-            print(found)
 
             if found is not None:
                 # Check team
@@ -315,7 +319,6 @@ class Board:
         # Check for vertical/horizontal attacks (queen, rook and king*)
         for step in stra_steps:
             found,dist = self.first_in_path(coord, piece.Vec2(step[0], step[1]))
-            print(found)
 
             if found is not None:
                 # Check team
